@@ -12,13 +12,14 @@ logging.basicConfig(
 
 app = FastAPI(title="HR AI Platform")
 
-# CORS middleware for frontend - allow both ports
+origins = [
+    "https://hr-ai-platform-frontend.vercel.app",
+    "https://hr-ai-platform-frontend-nnprm99xl-radwans-projects-b0f1e322.vercel.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001"
-    ],
+    allow_origins=origins,  # Allow only these frontend URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
