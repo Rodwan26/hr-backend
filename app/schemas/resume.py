@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional, Any, Dict
 
 # --- JOB SCHEMAS ---
@@ -20,6 +20,8 @@ class JobCreate(BaseModel):
     required_skills: Optional[List[str]] = None  # Legacy, use candidate_profile instead
 
 class JobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     title: str
     description: Optional[str]
@@ -36,9 +38,6 @@ class JobResponse(BaseModel):
     experience_level: Optional[str]
     required_skills: Optional[List[str]]
     is_active: bool
-    
-    class Config:
-        from_attributes = True
 
 # --- RESUME SCHEMAS ---
 
@@ -51,16 +50,17 @@ class ResumeStatusUpdate(BaseModel):
     status: str # New, Reviewing, Shortlisted, Rejected
 
 class ResumeSubmissionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     job_id: int
     name: str
     status: str
     message: str = "Resume submitted successfully. Analysis pending."
-    
-    class Config:
-        from_attributes = True
 
 class ResumeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     job_id: int
     name: str
@@ -84,12 +84,3 @@ class ResumeResponse(BaseModel):
     
     status: str
     trust_metadata: Optional[Any]
-    
-    class Config:
-        from_attributes = True
-
-# Resolve forward references for Pydantic V2
-JobResponse.model_rebuild()
-ResumeCreate.model_rebuild()
-ResumeResponse.model_rebuild()
-ResumeSubmissionResponse.model_rebuild()

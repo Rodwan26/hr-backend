@@ -25,12 +25,27 @@ router = APIRouter(
 )
 
 
+class PayrollSummaryResponse(BaseModel):
+    total_budget: float
+    exceptions_count: int
+    active_employees: int
+    recent_payrolls: List[dict]
+
 class PayrollRequest(BaseModel):
     employee_id: int
     month: int
     year: int
     base_salary: float
 
+@router.get("/summary", response_model=PayrollSummaryResponse)
+def get_payroll_summary(
+    db: Session = Depends(get_db),
+    org_id: int = Depends(get_current_org)
+):
+    """
+    Get high-level payroll summary for the current month.
+    """
+    return payroll_service.get_payroll_summary(db, org_id)
 
 class LockPayrollRequest(BaseModel):
     month: int
@@ -47,7 +62,8 @@ class ValidatePayrollRequest(BaseModel):
 def validate_payroll(
     request: ValidatePayrollRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org_id: int = Depends(get_current_org)
 ):
     """
     Validate prerequisites before running payroll.
@@ -86,7 +102,8 @@ def validate_payroll(
 def calculate_payroll(
     request: PayrollRequest, 
     db: Session = Depends(get_db), 
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org_id: int = Depends(get_current_org)
 ):
     """
     Calculate payroll for a single employee.
@@ -137,7 +154,8 @@ def calculate_bulk_payroll(
     month: int, 
     year: int, 
     db: Session = Depends(get_db), 
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org_id: int = Depends(get_current_org)
 ):
     """
     Run payroll for all employees in the current user's organization.
@@ -162,7 +180,8 @@ def calculate_bulk_payroll(
 def get_payroll_history(
     employee_id: int, 
     db: Session = Depends(get_db), 
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org_id: int = Depends(get_current_org)
 ):
     """
     Get payroll history for an employee.
@@ -191,7 +210,8 @@ def get_payroll_details(
 def ask_payroll_question(
     question: str = Body(..., embed=True),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org_id: int = Depends(get_current_org)
 ):
     """
     Ask AI questions about payroll policy/history.
@@ -223,7 +243,8 @@ def ask_payroll_question(
 def lock_payroll_period(
     payload: LockPayrollRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role([UserRole.HR_ADMIN]))
+    current_user: User = Depends(require_role([UserRole.HR_ADMIN])),
+    org_id: int = Depends(get_current_org)
 ):
     """
     Lock a payroll period to prevent further calculations/edits.
@@ -290,7 +311,8 @@ def explain_payslip(
 def download_payslip_pdf(
     payroll_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org_id: int = Depends(get_current_org)
 ):
     """
     Generate and download a PDF payslip.
@@ -333,7 +355,8 @@ class ValidateAllPayrollRequest(BaseModel):
 def validate_all_payroll(
     request: ValidateAllPayrollRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org_id: int = Depends(get_current_org)
 ):
     """
     Validate prerequisites for ALL employees before running bulk payroll.
@@ -348,7 +371,8 @@ def download_all_payslips_zip(
     month: int, 
     year: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org_id: int = Depends(get_current_org)
 ):
     """
     Download ZIP containing PDF payslips for all employees for a given period.

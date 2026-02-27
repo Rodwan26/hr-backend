@@ -1,7 +1,4 @@
-"""
-Department Schemas for API request/response validation.
-"""
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 
@@ -32,6 +29,8 @@ class DepartmentUpdate(BaseModel):
 
 class DepartmentResponse(DepartmentBase):
     """Schema for department response."""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     organization_id: int
     is_active: bool
@@ -41,17 +40,13 @@ class DepartmentResponse(DepartmentBase):
     # Computed fields
     full_path: Optional[str] = None
     employee_count: Optional[int] = None
-    
-    class Config:
-        from_attributes = True
 
 
 class DepartmentWithChildren(DepartmentResponse):
     """Schema for department with nested children."""
-    children: List["DepartmentWithChildren"] = []
+    model_config = ConfigDict(from_attributes=True)
     
-    class Config:
-        from_attributes = True
+    children: List["DepartmentWithChildren"] = []
 
 
 class DepartmentTree(BaseModel):

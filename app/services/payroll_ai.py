@@ -81,8 +81,12 @@ class PayrollAIService:
             comp.payroll_id = payroll.id
             db.add(comp)
         
-        db.commit()
-        db.refresh(payroll)
+        try:
+            db.commit()
+            db.refresh(payroll)
+        except Exception:
+            db.rollback()
+            raise
         return payroll
 
     def explain_payslip(self, payroll: Payroll) -> Dict[str, Any]:

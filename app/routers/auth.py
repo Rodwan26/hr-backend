@@ -1,13 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import logging
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.services import auth as auth_service
 from app.services.audit import AuditService
-from app.schemas.auth import LoginRequest, Token, UserResponse, TokenData
-from typing import List
+from app.schemas.auth import LoginRequest, Token, UserResponse, TokenData, UserUpdate, PasswordChange
+from typing import List, Optional
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/auth",
@@ -16,7 +19,6 @@ router = APIRouter(
 
 @router.post("/login", response_model=Token)
 def login(login_data: LoginRequest, db: Session = Depends(get_db)):
-    print(f"DEBUG: Login attempt for email: {login_data.email}")
     # Note: Using JSON LoginRequest instead of form-data for frontend compatibility
     user = db.query(User).filter(User.email == login_data.email).first()
     if not user or not auth_service.verify_password(login_data.password, user.hashed_password):
@@ -59,7 +61,7 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
         # Store session
         from app.models.user import UserSession
         
-        expires_at = datetime.utcnow() + timedelta(days=auth_service.REFRESH_TOKEN_EXPIRE_DAYS)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=auth_service.REFRESH_TOKEN_EXPIRE_DAYS)
         session = UserSession(
             user_id=user.id,
             refresh_token=refresh_token,
@@ -80,11 +82,6 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
             organization_id=user.organization_id
         )
         
-        # Get employee_id for frontend context
-        from app.models.employee import Employee
-        employee = db.query(Employee).filter(Employee.user_id == user.id).first()
-        employee_id = employee.id if employee else None
-
         return {
             "access_token": access_token, 
             "refresh_token": refresh_token,
@@ -101,12 +98,7 @@ def login(login_data: LoginRequest, db: Session = Depends(get_db)):
     except Exception as e:
         # Catch DB or other unexpected errors
         db.rollback()
-        import logging
-        import traceback
-        with open("last_error.txt", "w") as f:
-            f.write(traceback.format_exc())
-            
-        logging.getLogger(__name__).error(f"Login error: {str(e)}", exc_info=True)
+        logger.error(f"Login error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal login error. Please check server logs."
@@ -124,7 +116,7 @@ def refresh_token(refresh_token: str, db: Session = Depends(get_db)):
     db_session = db.query(UserSession).filter(
         UserSession.refresh_token == refresh_token,
         UserSession.is_revoked == False,
-        UserSession.expires_at > datetime.utcnow()
+        UserSession.expires_at > datetime.now(timezone.utc)
     ).first()
     
     if not db_session:
@@ -153,7 +145,7 @@ def refresh_token(refresh_token: str, db: Session = Depends(get_db)):
     new_access_token = auth_service.create_access_token(data=token_data)
     new_refresh_token = auth_service.create_refresh_token(data={"sub": user.email})
     
-    new_expires_at = datetime.utcnow() + timedelta(days=auth_service.REFRESH_TOKEN_EXPIRE_DAYS)
+    new_expires_at = datetime.now(timezone.utc) + timedelta(days=auth_service.REFRESH_TOKEN_EXPIRE_DAYS)
     new_session = UserSession(
         user_id=user.id,
         refresh_token=new_refresh_token,
@@ -184,3 +176,67 @@ def get_me(current_user: User = Depends(get_current_user)):
     user_data = UserResponse.from_orm(current_user)
     user_data.employee_id = current_user.employee_profile.id if current_user.employee_profile else None
     return user_data
+
+@router.patch("/profile", response_model=UserResponse)
+def update_profile(
+    update_data: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update current user's profile information."""
+    if update_data.email:
+        # Check if email is already taken by another user
+        existing_user = db.query(User).filter(User.email == update_data.email).first()
+        if existing_user and existing_user.id != current_user.id:
+            raise HTTPException(status_code=400, detail="Email already in use")
+        current_user.email = update_data.email
+    
+    if update_data.department:
+        current_user.department = update_data.department
+        
+    if update_data.full_name:
+        current_user.full_name = update_data.full_name
+        
+    db.commit()
+    db.refresh(current_user)
+    
+    # Log the update
+    AuditService.log(
+        db,
+        action="update_profile",
+        entity_type="user",
+        entity_id=current_user.id,
+        user_id=current_user.id,
+        user_role=current_user.role,
+        details={"email": current_user.email}
+    )
+    
+    user_data = UserResponse.from_orm(current_user)
+    user_data.employee_id = current_user.employee_profile.id if current_user.employee_profile else None
+    return user_data
+
+@router.post("/change-password")
+def change_password(
+    data: PasswordChange,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Securely update current user's password."""
+    if not auth_service.verify_password(data.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect current password")
+    
+    current_user.hashed_password = auth_service.get_password_hash(data.new_password)
+    db.commit()
+    
+    # Log the update
+    AuditService.log(
+        db,
+        action="change_password",
+        entity_type="user",
+        entity_id=current_user.id,
+        user_id=current_user.id,
+        user_role=current_user.role,
+        details={"status": "success"}
+    )
+    
+    return {"success": True, "message": "Password updated successfully"}

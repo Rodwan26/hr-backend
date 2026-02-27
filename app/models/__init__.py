@@ -9,17 +9,18 @@ from . import (
     wellbeing_assessment, burnout_assessment,
     onboarding_employee, onboarding_task, onboarding_chat, onboarding_document,
     onboarding_template, onboarding_reminder,
-    document, document_chunk, activity,
-    audit_log, ticket, organization, governance, task
+    audit_log, ticket, organization, governance, task, notification
 )
 
 # Explicit class exports for cleaner imports
 from .user import User
 from .organization import Organization
 from .department import Department
+from .notification import Notification
 
 __all__ = [
     "User",
     "Organization",
     "Department",
+    "Notification",
 ]

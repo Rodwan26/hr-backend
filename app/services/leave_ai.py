@@ -6,6 +6,9 @@ from typing import Dict, Any, List
 from datetime import datetime
 from app.services.openrouter_client import call_openrouter
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 def check_leave_eligibility(db: Session, employee_id: str, leave_type: str, days_requested: float) -> Dict[str, Any]:
     """
@@ -90,7 +93,7 @@ def auto_approve_decision(leave_request: LeaveRequest, balance: LeaveBalance, po
         ai_result = json.loads(json_str)
         return ai_result
     except Exception as e:
-        print(f"AI Decision Error: {e}")
+        logger.error(f"AI Decision Error: {e}", exc_info=True)
         # Fallback to manual review on error
         return {"decision": "pending_approval", "reasoning": "AI analysis failed, defaulted to manual review."}
 

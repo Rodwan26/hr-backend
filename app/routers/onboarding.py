@@ -1,9 +1,9 @@
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional, Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -73,13 +73,12 @@ class OnboardingEmployeeResponse(BaseModel):
     organization_id: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OnboardingTaskCreate(BaseModel):
     task_title: str
-    task_description: str
+    task_description: Optional[str] = None
     task_category: str = "other"
     due_date: Optional[date] = None
 
@@ -88,7 +87,7 @@ class OnboardingTaskResponse(BaseModel):
     id: int
     employee_id: int
     task_title: str
-    task_description: str
+    task_description: Optional[str] = None
     task_category: str
     is_completed: bool
     due_date: Optional[date]
@@ -96,8 +95,7 @@ class OnboardingTaskResponse(BaseModel):
     task_order: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AskRequest(BaseModel):
@@ -119,8 +117,7 @@ class ChatResponse(BaseModel):
     is_helpful: Optional[bool]
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ChatFeedbackRequest(BaseModel):
@@ -319,6 +316,32 @@ def list_tasks(
     return tasks
 
 
+@router.get("/me/tasks", response_model=List[OnboardingTaskResponse])
+def get_my_tasks(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Fetch onboarding tasks for the currently authenticated user.
+    Uses email to link User to OnboardingEmployee.
+    Returns empty list instead of 404 if no onboarding record exists.
+    """
+    employee = db.query(OnboardingEmployee).filter(
+        OnboardingEmployee.employee_email == current_user.email
+    ).first()
+    
+    if not employee:
+        return []
+        
+    tasks = (
+        db.query(OnboardingTask)
+        .filter(OnboardingTask.employee_id == employee.id)
+        .order_by(OnboardingTask.is_completed.asc(), OnboardingTask.task_order.asc(), OnboardingTask.created_at.asc())
+        .all()
+    )
+    return tasks
+
+
 @router.post("/employees/{employee_id}/tasks", response_model=OnboardingTaskResponse)
 def create_custom_task(
     employee_id: int, 
@@ -371,7 +394,7 @@ def complete_task(
 
     if not task.is_completed:
         task.is_completed = True
-        task.completed_at = datetime.utcnow()
+        task.completed_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(task)
         analyze_progress(task.employee_id, db)
@@ -516,7 +539,8 @@ def chat_feedback(
 def tips(
     employee_id: int, 
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    org_id: int = Depends(get_current_org)
 ):
     employee = db.query(OnboardingEmployee).filter(OnboardingEmployee.id == employee_id).first()
     if not employee:
@@ -558,12 +582,31 @@ class DocumentResponse(BaseModel):
     signed_at: Optional[datetime]
     required_by: Optional[datetime]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 @router.get("/employees/{employee_id}/documents", response_model=List[DocumentResponse])
 def list_documents(employee_id: int, db: Session = Depends(get_db)):
     return db.query(OnboardingDocument).filter(OnboardingDocument.employee_id == employee_id).all()
+
+
+@router.get("/me/documents", response_model=List[DocumentResponse])
+def get_my_documents(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Fetch onboarding documents for the currently authenticated user.
+    Uses email to link User to OnboardingEmployee.
+    Returns empty list instead of 404 if no onboarding record exists.
+    """
+    employee = db.query(OnboardingEmployee).filter(
+        OnboardingEmployee.employee_email == current_user.email
+    ).first()
+    
+    if not employee:
+        return []
+        
+    return db.query(OnboardingDocument).filter(OnboardingDocument.employee_id == employee.id).all()
 
 @router.post("/employees/{employee_id}/documents")
 def add_required_document(employee_id: int, document_name: str, document_type: str, db: Session = Depends(get_db)):
@@ -571,7 +614,7 @@ def add_required_document(employee_id: int, document_name: str, document_type: s
         employee_id=employee_id,
         document_name=document_name,
         document_type=document_type,
-        required_by=datetime.utcnow() + timedelta(days=7)
+        required_by=datetime.now(timezone.utc) + timedelta(days=7)
     )
     db.add(doc)
     db.commit()
@@ -583,7 +626,7 @@ def sign_document(doc_id: int, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     doc.is_signed = True
-    doc.signed_at = datetime.utcnow()
+    doc.signed_at = datetime.now(timezone.utc)
     db.commit()
     return doc
 
@@ -594,7 +637,8 @@ def sign_document(doc_id: int, db: Session = Depends(get_db)):
 def create_template(
     payload: OnboardingTemplateCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role([UserRole.HR_ADMIN, UserRole.HR_MANAGER]))
+    current_user: User = Depends(require_role([UserRole.HR_ADMIN, UserRole.HR_MANAGER])),
+    org_id: int = Depends(get_current_org)
 ):
     """Create a reusable onboarding template."""
     # Check department access for HR_MANAGER
@@ -630,7 +674,8 @@ def create_template(
 def list_templates(
     department_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role([UserRole.HR_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER]))
+    current_user: User = Depends(require_role([UserRole.HR_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER])),
+    org_id: int = Depends(get_current_org)
 ):
     query = db.query(OnboardingTemplate).filter(
         OnboardingTemplate.organization_id == org_id,
@@ -646,14 +691,21 @@ def apply_template(
     employee_id: int,
     template_id: int,
     db: Session = Depends(get_db),
+    org_id: int = Depends(get_current_org),
     current_user: User = Depends(require_role([UserRole.HR_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER]))
 ):
     """Apply a template to an employee, creating tasks."""
-    employee = db.query(OnboardingEmployee).filter(OnboardingEmployee.id == employee_id).first()
+    employee = db.query(OnboardingEmployee).filter(
+        OnboardingEmployee.id == employee_id,
+        OnboardingEmployee.organization_id == org_id
+    ).first()
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found")
         
-    template = db.query(OnboardingTemplate).filter(OnboardingTemplate.id == template_id).first()
+    template = db.query(OnboardingTemplate).filter(
+        OnboardingTemplate.id == template_id,
+        OnboardingTemplate.organization_id == org_id
+    ).first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
         
@@ -688,8 +740,8 @@ def apply_template(
         # Schedule Reminder if needed
         if due_date and due_date > date.today():
              # Schedule reminder 1 day before
-             reminder_time = datetime.combine(due_date - timedelta(days=1), datetime.min.time()) + timedelta(hours=9)
-             if reminder_time > datetime.utcnow():
+             reminder_time = datetime.combine(due_date - timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=9)
+             if reminder_time > datetime.now(timezone.utc):
                  reminder = OnboardingReminder(
                      task_id=task.id,
                      reminder_type=ReminderType.EMAIL,
@@ -733,7 +785,8 @@ class OnboardingBulkTemplateApply(BaseModel):
 def apply_template_bulk(
     payload: OnboardingBulkTemplateApply,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role([UserRole.HR_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER]))
+    current_user: User = Depends(require_role([UserRole.HR_ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER])),
+    org_id: int = Depends(get_current_org)
 ):
     """
     Apply a template to multiple employees at once.
@@ -796,7 +849,7 @@ def apply_template_bulk(
                 # Schedule Reminder
                 if due_date and due_date > date.today():
                      reminder_time = datetime.combine(due_date - timedelta(days=1), datetime.min.time()) + timedelta(hours=9)
-                     if reminder_time > datetime.utcnow():
+                     if reminder_time > datetime.now(timezone.utc):
                          reminder = OnboardingReminder(
                              task_id=task.id,
                              reminder_type=ReminderType.EMAIL,
@@ -856,7 +909,8 @@ def apply_template_bulk(
 def list_reminders(
     status: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_role([UserRole.HR_ADMIN]))
+    current_user: User = Depends(require_role([UserRole.HR_ADMIN])),
+    org_id: int = Depends(get_current_org)
 ):
     query = db.query(OnboardingReminder).join(OnboardingTask).join(OnboardingEmployee).filter(
         OnboardingEmployee.organization_id == org_id
@@ -874,7 +928,7 @@ def send_reminders(
     Manual trigger to send pending reminders. 
     In production, this would be a cron job / Celery task.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     pending = db.query(OnboardingReminder).filter(
         OnboardingReminder.status == ReminderStatus.PENDING,
         OnboardingReminder.scheduled_at <= now

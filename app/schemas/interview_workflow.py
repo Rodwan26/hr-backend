@@ -1,8 +1,4 @@
-"""
-Interview Workflow Schemas
-Includes Slots, Scorecards, Kits, and Actions.
-"""
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from app.models.interview import InterviewStatus, InterviewSlotStatus, ScorecardRecommendation
@@ -15,6 +11,8 @@ class InterviewSlotCreate(BaseModel):
     meeting_link: Optional[str] = None
 
 class InterviewSlotResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     interview_id: int
     interviewer_id: int
@@ -24,9 +22,6 @@ class InterviewSlotResponse(BaseModel):
     status: InterviewSlotStatus
     candidate_confirmed: bool
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 # --- Invite ---
 class InterviewInviteRequest(BaseModel):
@@ -45,14 +40,13 @@ class InterviewKitStructure(BaseModel):
     evaluation_guide: Optional[str] = None
 
 class InterviewKitResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     interview_id: int
     questions: List[Question]
     evaluation_guide: Optional[str]
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 # --- Scorecard ---
 class InterviewScorecardCreate(BaseModel):
@@ -66,14 +60,13 @@ class InterviewScorecardCreate(BaseModel):
     recommendation: ScorecardRecommendation
 
 class InterviewScorecardResponse(InterviewScorecardCreate):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     interview_id: int
     interviewer_id: int
     ai_consistency_check: Optional[Dict[str, Any]] = None
     submitted_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 # --- Consistency Check ---
 class ConsistencyAnalysis(BaseModel):
@@ -82,14 +75,49 @@ class ConsistencyAnalysis(BaseModel):
     flags: List[str] # e.g., "Interviewer A rated Technical 2 while B rated 9"
     trust_score: float
 
-# --- Decision ---
-class InterviewDecisionRequest(BaseModel):
-    status: InterviewStatus # HIRED, REJECTED
-    reason: Optional[str] = None
-    feedback_to_candidate: Optional[str] = None
+# --- Interview Lifecycle ---
+class InterviewCreate(BaseModel):
+    candidate_name: str
+    candidate_email: str
+    interviewer_name: str
+    interviewer_email: str
+    job_title: str
+    preferred_dates: str
 
-# Resolve forward references for Pydantic V2
-InterviewSlotResponse.model_rebuild()
-InterviewKitResponse.model_rebuild()
-InterviewScorecardResponse.model_rebuild()
-ConsistencyAnalysis.model_rebuild()
+class InterviewResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    candidate_name: str
+    candidate_email: str
+    interviewer_name: Optional[str] = None
+    interviewer_email: Optional[str] = None
+    job_title: Optional[str] = None # We'll populate this in the router from Job or direct field
+    status: InterviewStatus
+    preferred_dates: Optional[str] = None
+    scheduled_date: Optional[datetime] = None
+    meeting_link: Optional[str] = None
+    stage: str
+
+class SuggestSlotsRequest(BaseModel):
+    preferred_dates: str
+    interviewer_availability: str
+
+class ConfirmInterviewRequest(BaseModel):
+    date: str
+    time: str
+
+class GenerateQuestionsRequest(BaseModel):
+    job_title: str
+    candidate_resume: str
+
+class AnalyzeFitRequest(BaseModel):
+    job_requirements: str
+    candidate_resume: str
+
+class AnalyzeFitResponse(BaseModel):
+    fit_score: float
+    reasoning: str
+
+class InterviewDecisionRequest(BaseModel):
+    status: InterviewStatus
+    reason: Optional[str] = None

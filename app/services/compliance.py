@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from app.models.audit_log import AuditLog
 from app.models.governance import EthicalAuditLog
@@ -13,7 +13,7 @@ class ComplianceService:
         Purge records older than retention_days.
         Default is 1 year (365 days).
         """
-        cutoff_date = datetime.utcnow() - timedelta(days=retention_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
         
         try:
             # Purge Audit Logs

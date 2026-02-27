@@ -45,7 +45,7 @@ class User(Base):
     department = Column(String, nullable=True)
     
     # New department relationship (foreign key to departments table)
-    department_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
+    department_id = Column(Integer, ForeignKey("departments.id", use_alter=True, name="fk_user_department_id"), nullable=True)
     
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -60,6 +60,7 @@ class User(Base):
     department_rel = relationship("Department", foreign_keys=[department_id], back_populates="employees")
     managed_department = relationship("Department", foreign_keys="Department.manager_user_id", back_populates="manager")
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     
     # Leave Workflow
     leave_requests = relationship("LeaveRequest", foreign_keys="[LeaveRequest.employee_id]", back_populates="employee", cascade="all, delete-orphan")

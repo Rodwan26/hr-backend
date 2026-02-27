@@ -13,6 +13,7 @@ Architecture:
 
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List, Optional
+import logging
 import zipfile
 import io
 
@@ -20,21 +21,7 @@ from app.models.payroll import Payroll, PayrollLock, PayrollStatus
 from app.models.employee import Employee
 from app.services.payroll_ai import PayrollAIService
 
-# ... (rest of the file remains unchanged until the end)
-
-def generate_payslip_pdf(db: Session, payroll_id: int) -> bytes:
-    # ... (existing function implementation)
-    # I need to keep the existing implementation here, but for brevity in this replace block I will just show the end of file additions
-    pass 
-
-# Since I cannot use "pass" effectively in a replace block that spans the whole file, I will target the end of the file to append the new function
-# And I'll add imports separately at the top.
-
-# Wait, replace_file_content is for replacing a block. I should do imports first, then append function.
-
-from app.models.employee import Employee
-from app.services.payroll_ai import PayrollAIService
-
+logger = logging.getLogger(__name__)
 
 # Singleton-like instance for the AI service
 _ai_service = PayrollAIService()
@@ -229,8 +216,12 @@ def calculate_payroll(
     # Set organization_id if provided
     if organization_id and payroll.organization_id is None:
         payroll.organization_id = organization_id
-        db.commit()
-        db.refresh(payroll)
+        try:
+            db.commit()
+            db.refresh(payroll)
+        except Exception:
+            db.rollback()
+            raise
     
     return _payroll_to_dict(payroll)
 
@@ -280,7 +271,11 @@ def calculate_bulk_payroll(
                 base_salary
             )
             payroll.organization_id = organization_id
-            db.commit()
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
             results.append(_payroll_to_dict(payroll))
         except Exception as e:
             errors.append({"employee_id": emp.id, "error": str(e)})
@@ -461,8 +456,12 @@ def lock_payroll_period(
         organization_id=organization_id
     )
     db.add(new_lock)
-    db.commit()
-    db.refresh(new_lock)
+    try:
+        db.commit()
+        db.refresh(new_lock)
+    except Exception:
+        db.rollback()
+        raise
     
     return {
         "status": "locked",
@@ -643,7 +642,7 @@ def generate_all_payslips_zip(
         for payroll in payrolls:
             try:
                 # Generate PDF (using HTML for now)
-                pdf_bytes = generate_payslip_pdf(db, payroll.id)
+                pdf_bytes = generate_payslip_pdf(db, payroll.id, organization_id)
                 
                 # Get employee name for filename
                 employee = db.query(Employee).filter(
@@ -658,10 +657,44 @@ def generate_all_payslips_zip(
                 zip_file.writestr(filename, pdf_bytes)
             except Exception as e:
                 # Log error but continue with other payslips
-                print(f"Error generating payslip for payroll {payroll.id}: {str(e)}")
+                logger.error(f"Error generating payslip for payroll {payroll.id}: {str(e)}")
                 # Potentially write an error log file into the zip
                 zip_file.writestr(f"Error_{payroll.id}.txt", str(e))
     
     return zip_buffer.getvalue()
 
 
+from sqlalchemy import func
+from datetime import datetime
+
+def get_payroll_summary(db: Session, organization_id: int) -> Dict[str, Any]:
+    """
+    Get aggregated payroll statistics for an organization.
+    """
+    now = datetime.now()
+    month = now.month
+    year = now.year
+
+    # 1. Total Budget (Sum of net_salary for current month/year)
+    total_budget = db.query(func.sum(Payroll.net_salary)).filter(
+        Payroll.organization_id == organization_id,
+        Payroll.month == month,
+        Payroll.year == year
+    ).scalar() or 0.0
+
+    # 2. Exceptions Count (Validation issues)
+    # We'll use the validate_all_payroll_prerequisites logic here or a simplified version
+    val_results = validate_all_payroll_prerequisites(db, organization_id, month, year)
+    exceptions_count = sum(1 for d in val_results["details"] if not d["valid"])
+
+    # 3. Recent Payrolls
+    recent_payrolls = db.query(Payroll).filter(
+        Payroll.organization_id == organization_id
+    ).order_by(Payroll.created_at.desc()).limit(5).all()
+
+    return {
+        "total_budget": total_budget,
+        "exceptions_count": exceptions_count,
+        "active_employees": val_results["total_employees"],
+        "recent_payrolls": [_payroll_to_dict(p) for p in recent_payrolls]
+    }

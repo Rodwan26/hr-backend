@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from app.database import get_db
 from app.models.policy import Policy
 from app.models.ticket import Ticket
@@ -10,6 +10,8 @@ from datetime import datetime
 
 from app.routers.auth_deps import require_role, require_any_role, get_current_org
 from app.models.user import UserRole, User
+from app.services.ai_trust_service import AITrustService
+from app.schemas.trust import TrustedAIResponse
 
 router = APIRouter(prefix="/helpdesk", tags=["helpdesk"])
 
@@ -21,13 +23,12 @@ class AskResponse(BaseModel):
     ticket_id: int
 
 class TicketResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     question: str
     ai_response: str
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
 
 class PolicyCreate(BaseModel):
     title: str
@@ -35,15 +36,14 @@ class PolicyCreate(BaseModel):
     category: str
 
 class PolicyResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     title: str
     content: str
     category: str
-    
-    class Config:
-        from_attributes = True
 
-@router.post("/ask", response_model=AskResponse)
+@router.post("/ask", response_model=TrustedAIResponse)
 def ask_question(
     request: AskRequest, 
     db: Session = Depends(get_db),
@@ -72,7 +72,23 @@ def ask_question(
     db.commit()
     db.refresh(ticket)
     
-    return AskResponse(answer=ai_response, ticket_id=ticket.id)
+    # Standardize on AITrustService for consistency
+    trust_service = AITrustService(
+        db,
+        organization_id=org_id,
+        user_id=current_user.id,
+        user_role=current_user.role
+    )
+
+    return trust_service.wrap_and_log(
+        content=ai_response,
+        action_type="helpdesk_query",
+        entity_type="ticket",
+        entity_id=ticket.id,
+        confidence_score=0.9, # Placeholder for helpdesk
+        model_name="HR-Policy-v1",
+        details={"question": request.question}
+    )
 
 @router.get("/tickets", response_model=List[TicketResponse])
 def get_tickets(

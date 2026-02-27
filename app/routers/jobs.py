@@ -8,6 +8,7 @@ from app.models.user import User, UserRole
 from app.routers.auth_deps import require_role, get_current_user, get_current_org
 from app.schemas.job import JobCreate, JobUpdate, JobResponse
 from app.services.audit import AuditService
+from app.services.notification import NotificationService
 
 router = APIRouter(
     prefix="/jobs",
@@ -54,6 +55,16 @@ def create_job(
         details={"title": db_job.title, "department": db_job.department},
         organization_id=org_id,
         after_state=job_in.model_dump()
+    )
+
+    # Trigger Notification
+    NotificationService.notify_user(
+        db,
+        user_id=current_user.id,
+        title="New Job Created",
+        message=f"Success! '{db_job.title}' is now live in {db_job.department}.",
+        type="success",
+        link=f"/jobs/{db_job.id}"
     )
     
     return db_job

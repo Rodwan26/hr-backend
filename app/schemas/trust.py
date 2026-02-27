@@ -5,7 +5,7 @@ to ensure enterprise-grade explainability and auditability.
 """
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 class ConfidenceLevel(str, Enum):
@@ -66,7 +66,7 @@ class TrustMetadata(BaseModel):
             confidence_level=level,
             ai_model=model,
             sources=sources or [],
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             **kwargs
         )
     
@@ -78,7 +78,7 @@ class TrustMetadata(BaseModel):
             confidence_level=ConfidenceLevel.LOW,
             is_fallback=True,
             fallback_reason=reason,
-            timestamp=datetime.utcnow().isoformat()
+            timestamp=datetime.now(timezone.utc).isoformat()
         )
 
 class TrustedAIResponse(BaseModel):

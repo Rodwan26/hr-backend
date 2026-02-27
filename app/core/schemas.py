@@ -1,6 +1,6 @@
 from typing import Any, Dict, Generic, List, Optional, TypeVar, Union
-from pydantic import BaseModel, ConfigDict
-from datetime import datetime
+from pydantic import BaseModel, ConfigDict, Field
+from datetime import datetime, timezone
 
 T = TypeVar("T")
 
@@ -16,7 +16,7 @@ class ApiResponse(BaseModel, Generic[T]):
     data: Optional[T] = None
     error: Optional[ErrorInfo] = None
     metadata: Dict[str, Any] = {}
-    timestamp: datetime = datetime.utcnow()
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary with JSON-serializable values."""

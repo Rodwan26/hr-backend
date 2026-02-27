@@ -151,7 +151,7 @@ class AIOrchestrator:
             raise AIError("Failed to parse AI response.")
 
     @classmethod
-    def coordinate(self, domain: str, task: str, context: Dict[str, Any], organization_id: Optional[int] = None, db_session: Any = None) -> Any:
+    def coordinate(cls, domain: str, task: str, context: Dict[str, Any], organization_id: Optional[int] = None, db_session: Any = None) -> Any:
         """
         High-level domain-task coordination.
         In the future, this will handle complex multi-step domain workflows.
@@ -211,7 +211,11 @@ class AIOrchestrator:
                 ethical_checks={"automated_bias_check": True}
             )
             db.add(log_entry)
-            db.commit()
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
             
             if bias_score > 0.5:
                 AuditService.log(

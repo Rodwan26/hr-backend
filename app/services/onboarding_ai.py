@@ -217,7 +217,11 @@ def analyze_progress(employee_id: int, db: Session) -> dict:
 
     employee.completion_percentage = percent
     employee.status = status
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     # Suggest priorities: overdue first, then next due, then setup/training
     pending_tasks = [t for t in tasks if not t.is_completed]

@@ -39,7 +39,8 @@ class AuthenticationError(AppException):
             error_code="AUTH_FAILED"
         )
 
-class PermissionError(AppException):
+class AccessDeniedError(AppException):
+    """Custom permission error. Named AccessDeniedError to avoid shadowing Python's built-in PermissionError."""
     def __init__(self, message: str = "Insufficient permissions"):
         super().__init__(
             message=message,

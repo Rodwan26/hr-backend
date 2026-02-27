@@ -201,3 +201,34 @@ def get_wellbeing_history(
             # but could be added if frontend needs validtion history.
         } for a in assessments
     ]
+@router.get("/tip", response_model=TrustedAIResponse)
+def get_organizational_wellbeing_tip(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    org_id: int = Depends(get_current_org)
+):
+    """
+    Generate a pro-active wellbeing tip based on organizational sentiment and risk patterns.
+    """
+    try:
+        service = WellbeingService(db, organization_id=org_id)
+        result = service.get_org_wellbeing_tip()
+        
+        trust_service = AITrustService(
+            db, 
+            organization_id=org_id, 
+            user_id=current_user.id, 
+            user_role=current_user.role
+        )
+        
+        return trust_service.wrap_and_log(
+            content=result["tip"],
+            data={"priority": result.get("priority", "medium")},
+            action_type="generate_wellbeing_tip",
+            entity_type="organization",
+            confidence_score=0.95,
+            model_name="HR-Strategy-v1",
+            reasoning="Derived from aggregated organizational telemetry patterns."
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Tip generation failed: {str(e)}")

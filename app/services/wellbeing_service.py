@@ -68,3 +68,17 @@ class WellbeingService(BaseService):
         except Exception as e:
             self.log_error(f"Friction check failed: {e}")
             return {"has_friction": False, "explanation": "Error testing friction."}
+    def get_org_wellbeing_tip(self) -> Dict[str, Any]:
+        """Generates a pro-active wellbeing tip based on organizational trends."""
+        # In a real scenario, this would scan aggregated metrics across all employees
+        # Here we simulate with a prompt that asks for a generic but actionable tip
+        system_prompt = """You are an organizational wellbeing consultant. 
+        Provide ONE short, actionable, and pro-active tip for HR administrators to improve workplace psychological safety and burnout prevention.
+        The tip should be around 20-30 words and sound professional yet empathetic.
+        Return JSON: {"tip": "...", "priority": "low|medium|high"}"""
+        
+        try:
+            return AIOrchestrator.analyze_text(system_prompt, "Context: General organization wellbeing analysis.", domain=AIDomain.WELLBEING)
+        except Exception as e:
+            self.log_error(f"Org wellbeing tip generation failed: {e}")
+            return {"tip": "Ensure teams have regular check-ins to discuss workload and support needs.", "priority": "medium"}

@@ -58,7 +58,11 @@ def submit_resume(
     db.refresh(db_resume)
 
     task_service = TaskService(background_tasks, db)
-    task_service.enqueue("resume_analysis", {"resume_id": db_resume.id, "job_id": job_id})
+    task_service.enqueue("resume_analysis", {
+        "resume_id": db_resume.id, 
+        "job_id": job_id,
+        "user_id": current_user.id
+    })
     
     AuditService.log(
         db,

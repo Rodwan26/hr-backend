@@ -2,7 +2,7 @@ import logging
 import json
 import traceback
 from typing import Callable, Any, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session
 
@@ -41,8 +41,12 @@ class TaskService(BaseService):
             organization_id=self.org_id
         )
         self.db.add(task)
-        self.db.commit()
-        self.db.refresh(task)
+        try:
+            self.db.commit()
+            self.db.refresh(task)
+        except Exception:
+            self.db.rollback()
+            raise
         
         logger.info(f"Enqueued Task {task.id} [{task_type}]")
 
@@ -83,14 +87,21 @@ class TaskService(BaseService):
 
         # Update to PROCESSING
         task.status = "PROCESSING"
-        task.updated_at = datetime.utcnow()
-        db.commit()
+        task.updated_at = datetime.now(timezone.utc)
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
 
         handler = TASK_HANDLERS.get(task.type)
         if not handler:
-            task.status = "FAILED"
             task.error = f"No handler for type {task.type}"
-            db.commit()
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
             return
 
         try:
@@ -101,8 +112,12 @@ class TaskService(BaseService):
             # Success
             task.status = "COMPLETED"
             task.result = result
-            task.updated_at = datetime.utcnow()
-            db.commit()
+            task.updated_at = datetime.now(timezone.utc)
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
             logger.info(f"Task {task.id} Completed successfully.")
 
         except Exception as e:
@@ -111,7 +126,7 @@ class TaskService(BaseService):
             
             task.error = str(e)
             task.retries += 1
-            task.updated_at = datetime.utcnow()
+            task.updated_at = datetime.now(timezone.utc)
             
             if task.retries < task.max_retries:
                 task.status = "RETRYING"
@@ -121,4 +136,8 @@ class TaskService(BaseService):
             else:
                 task.status = "FAILED"
             
-            db.commit()
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise

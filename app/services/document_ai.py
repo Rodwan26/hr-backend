@@ -1,5 +1,5 @@
 import os
-import PyPDF2
+import pypdf
 import docx
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
@@ -8,6 +8,7 @@ from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
 from app.models.organization import Organization
 from app.services.embedding_service import generate_embeddings, hybrid_search
+from app.core import prompts
 import hashlib
 import re
 import logging
@@ -38,7 +39,7 @@ def extract_text_from_file(file_path: str, file_type: str) -> str:
     try:
         if file_type == '.pdf':
             with open(file_path, 'rb') as f:
-                pdf_reader = PyPDF2.PdfReader(f)
+                pdf_reader = pypdf.PdfReader(f)
                 for page in pdf_reader.pages:
                     text += page.extract_text() + "\n"
         
@@ -413,11 +414,15 @@ def generate_rag_answer(question: str, context_chunks: List[str]) -> tuple[str, 
     messages = [
         {
             "role": "system",
-            "content": "You are a helpful assistant that answers questions based on provided document context. Always cite which document chunk you used. If the context doesn't contain the answer, say so clearly."
+            "content": prompts.DOCUMENT_RAG_SYSTEM
         },
         {
             "role": "user",
-            "content": f"Context from documents:\n\n{context}\n\nQuestion: {question}\n\nProvide a clear answer based on the context above. If the answer is not in the context, state that clearly."
+            "content": prompts.get_prompt(
+                prompts.DOCUMENT_RAG_USER_TEMPLATE,
+                context=context,
+                question=question
+            )
         }
     ]
     

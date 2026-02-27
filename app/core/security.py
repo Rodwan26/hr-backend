@@ -19,7 +19,7 @@ def encrypt_data(data: str) -> str:
         return _cipher.encrypt(data.encode()).decode()
     except Exception as e:
         logger.error(f"Encryption failed: {e}")
-        return data
+        raise ValueError(f"Encryption failed — refusing to store plaintext: {e}") from e
 
 def decrypt_data(encrypted_data: str) -> str:
     """Decrypt sensitive string data."""

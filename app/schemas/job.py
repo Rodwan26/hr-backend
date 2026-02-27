@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 
 class CandidateProfile(BaseModel):
@@ -28,13 +28,8 @@ class JobUpdate(JobBase):
     pass
 
 class JobResponse(JobBase):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     organization_id: int
     is_active: bool
-    
-    class Config:
-        from_attributes = True
-
-# Resolve forward references for Pydantic V2
-JobResponse.model_rebuild()
-JobCreate.model_rebuild()

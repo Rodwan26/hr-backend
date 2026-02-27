@@ -19,30 +19,57 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     """
     Extracts and validates the current user from the JWT token.
     """
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    import logging
+    logger = logging.getLogger(__name__)
     
     payload = auth_service.decode_access_token(token)
+    
     if payload is None:
-        raise credentials_exception
+        logger.warning("Authentication failed: Invalid token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    if "error" in payload and payload["error"] == "TOKEN_EXPIRED":
+        logger.info("Authentication failed: Token expired")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="TOKEN_EXPIRED",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
         
     if payload.get("type") != "access":
-        raise credentials_exception
+        logger.warning("Authentication failed: Invalid token type")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     
     email: str = payload.get("sub")
     role: str = payload.get("role")
     if email is None:
-        raise credentials_exception
+        logger.warning("Authentication failed: Missing subject (email) in token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing subject in token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     
     token_data = TokenData(email=email, role=role)
     user = db.query(User).filter(User.email == token_data.email).first()
     
     if user is None:
-        raise credentials_exception
+        logger.warning(f"Authentication failed: User {email} not found in database")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     if not user.is_active:
+        logger.warning(f"Authentication failed: User {email} is inactive")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User is inactive"
@@ -178,16 +205,30 @@ def get_current_org(token: str = Depends(oauth2_scheme)) -> int:
     Extracts and validates the organization ID from the JWT token.
     Fast context without a database hit.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     payload = auth_service.decode_access_token(token)
+    
     if payload is None:
+        logger.warning("Org validation failed: Invalid token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
+            detail="Invalid token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    if "error" in payload and payload["error"] == "TOKEN_EXPIRED":
+        logger.info("Org validation failed: Token expired")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="TOKEN_EXPIRED",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
     org_id = payload.get("org_id")
     if org_id is None:
+        logger.error(f"Org validation failed: No org_id in token for user {payload.get('sub')}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="No organization context in token"

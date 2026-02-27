@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from app.database import get_db
 from app.models.document import Document
 from app.models.document_chunk import DocumentChunk
@@ -23,6 +23,8 @@ from app.schemas.trust import TrustedAIResponse, TrustMetadata
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 class DocumentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     filename: str
     file_path: str
@@ -30,9 +32,6 @@ class DocumentResponse(BaseModel):
     upload_date: datetime
     uploaded_by: Optional[str]
     organization_id: Optional[int]
-    
-    class Config:
-        from_attributes = True
 
 class DocumentQueryRequest(BaseModel):
     question: str
@@ -44,13 +43,12 @@ class DocumentQueryResponse(BaseModel):
     confidence: float
 
 class ChunkResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     document_id: int
     chunk_text: str
     chunk_index: int
-    
-    class Config:
-        from_attributes = True
 
 # Multi-tenancy is now enforced via current_user.organization_id.
 # Legacy helper get_or_create_default_company removed.

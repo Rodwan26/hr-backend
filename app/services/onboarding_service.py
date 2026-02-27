@@ -75,5 +75,9 @@ def create_onboarding_tasks(
         db.add(new_task)
         created_tasks.append(new_task)
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return created_tasks

@@ -20,7 +20,7 @@ def fix_admin_org():
             
         # 2. Assign Admin to Organization
         # Assuming admin email is admin@example.com based on previous context
-        admin_email = "admin@example.com" 
+        admin_email = "admin@radwan.com" 
         user = db.query(User).filter(User.email == admin_email).first()
         
         if user:

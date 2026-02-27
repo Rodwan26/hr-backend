@@ -4,6 +4,9 @@ from sqlalchemy.orm import Session
 from app.schemas.trust import TrustMetadata, TrustedAIResponse, ConfidenceLevel, SourceCitation
 from app.services.audit import AuditService
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AITrustService:
     """
@@ -92,7 +95,7 @@ class AITrustService:
                 after_state={"trust_metadata": trust_metadata.model_dump()}
             )
         except Exception as e:
-            print(f"CRITICAL: Failed to audit AI action {action_type}: {e}")
+            logger.error(f"CRITICAL: Failed to audit AI action {action_type}: {e}", exc_info=True)
             # In a real production system, you might want to alert Sentry/Datadog here.
 
         # 4. Return Standardized Response

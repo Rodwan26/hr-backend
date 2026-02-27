@@ -1,35 +1,44 @@
+import logging
+
 import requests
-import os
-from dotenv import load_dotenv
 
-load_dotenv()
+from app.core.config import settings
 
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
-OPENROUTER_MODEL = "liquid/lfm-2.5-1.2b-thinking:free"
+logger = logging.getLogger(__name__)
+
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-def call_openrouter(messages: list, temperature: float = 0.7):
+
+def call_openrouter(messages: list, temperature: float = 0.7) -> str:
     """
     Call OpenRouter API with the specified messages.
-    
+
     Args:
         messages: List of message dictionaries with 'role' and 'content'
         temperature: Temperature for the model (default 0.7)
-    
+
     Returns:
         str: The AI response content
+
+    Raises:
+        ValueError: If API key is not configured.
+        requests.HTTPError: If the API call fails.
     """
+    api_key = settings.ai.openrouter_api_key
+    if not api_key:
+        raise ValueError("OPENROUTER_API_KEY is not configured. Set it in the environment.")
+
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
     }
-    
+
     payload = {
-        "model": OPENROUTER_MODEL,
+        "model": settings.ai.model_name,
         "messages": messages,
-        "temperature": temperature
+        "temperature": temperature,
     }
-    
-    response = requests.post(OPENROUTER_URL, json=payload, headers=headers)
+
+    response = requests.post(OPENROUTER_URL, json=payload, headers=headers, timeout=30)
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"]

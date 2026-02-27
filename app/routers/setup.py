@@ -18,6 +18,12 @@ class InitializeRequest(BaseModel):
     admin_email: EmailStr
     password: str
 
+@router.get("/status")
+def get_setup_status(db: Session = Depends(get_db)):
+    """Check if the system is already initialized."""
+    initialized = db.query(Organization).first() is not None
+    return {"initialized": initialized}
+
 @router.post("/initialize", status_code=status.HTTP_201_CREATED)
 def initialize_system(data: InitializeRequest, db: Session = Depends(get_db)):
     """

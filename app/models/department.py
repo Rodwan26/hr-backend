@@ -22,7 +22,7 @@ class Department(Base):
     parent_id = Column(Integer, ForeignKey("departments.id"), nullable=True)
     
     # Department manager (user who manages this department)
-    manager_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    manager_user_id = Column(Integer, ForeignKey("users.id", use_alter=True, name="fk_department_manager_id"), nullable=True)
     
     is_active = Column(Boolean, default=True, nullable=False)
     

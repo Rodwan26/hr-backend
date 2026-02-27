@@ -1,4 +1,5 @@
 from app.services.interview_service import InterviewService
+from app.core import prompts
 
 def suggest_interview_slot(candidate_preferences: str, interviewer_availability: str) -> list[dict]:
     service = InterviewService()
@@ -21,7 +22,7 @@ def analyze_feedback_consistency(feedbacks: list[dict], job_requirements: str) -
     from app.services.ai_orchestrator import AIOrchestrator, AIDomain
     import json
     messages = [
-        {"role": "system", "content": "Analyze interviewer feedback for potential bias. Respond in JSON: {\"consistency_score\": 0.0-1.0, \"risks\": [], \"summary\": \"\", \"recommendation\": \"\"}"},
+        {"role": "system", "content": prompts.INTERVIEW_BIAS_ANALYSIS_SYSTEM},
         {"role": "user", "content": f"Requirements: {job_requirements}\nFeedbacks: {json.dumps(feedbacks)}"}
     ]
     try:
@@ -32,8 +33,15 @@ def analyze_feedback_consistency(feedbacks: list[dict], job_requirements: str) -
 def generate_feedback_summary(scores: dict, comments: str, job_title: str) -> dict:
     from app.services.ai_orchestrator import AIOrchestrator, AIDomain
     import json
-    system_prompt = f"You are a professional HR analyst for {job_title}. Summarize strengths/weaknesses in JSON."
-    user_content = f"Scores: {json.dumps(scores)}\nComments: {comments}"
+    system_prompt = prompts.get_prompt(
+        prompts.INTERVIEW_FEEDBACK_SUMMARY_SYSTEM,
+        job_title=job_title
+    )
+    user_content = prompts.get_prompt(
+        prompts.INTERVIEW_FEEDBACK_SUMMARY_USER_TEMPLATE,
+        scores_json=json.dumps(scores),
+        comments=comments
+    )
     try:
         return AIOrchestrator.analyze_text(system_prompt, user_content, domain=AIDomain.INTERVIEW)
     except:

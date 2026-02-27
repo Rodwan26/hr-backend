@@ -1,5 +1,5 @@
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -9,6 +9,9 @@ from app.schemas.leave import LeaveApprovalRequest, CalendarLeave
 from app.routers.auth_deps import get_current_user, require_role, get_current_org
 from app.services.audit import AuditService
 from app.services.notification_service import NotificationService
+import logging
+
+logger = logging.getLogger(__name__)
     
 router = APIRouter(prefix="/leave", tags=["leave-manager"])
 
@@ -55,17 +58,17 @@ def approve_leave(
             # Intermediate approval
             leave.status = LeaveStatus.PENDING.value
             leave.approver_id = current_user.id
-            leave.approved_at = datetime.utcnow()
+            leave.approved_at = datetime.now(timezone.utc)
             audit_action = f"approve_leave_level_{next_level}"
         else:
             # Final approval
             leave.status = LeaveStatus.APPROVED.value
             if next_level == 1:
                 leave.approver_id = current_user.id
-                leave.approved_at = datetime.utcnow()
+                leave.approved_at = datetime.now(timezone.utc)
             elif next_level >= 2:
                 leave.second_approver_id = current_user.id
-                leave.second_approved_at = datetime.utcnow()
+                leave.second_approved_at = datetime.now(timezone.utc)
             audit_action = "approve_leave_final"
     else:
         # Rejection immediately terminates workflow
@@ -75,10 +78,10 @@ def approve_leave(
         current_level = leave.approval_level if leave.approval_level else 0
         if current_level == 0:
             leave.approver_id = current_user.id
-            leave.approved_at = datetime.utcnow() # timestamp of rejection
+            leave.approved_at = datetime.now(timezone.utc) # timestamp of rejection
         else:
             leave.second_approver_id = current_user.id
-            leave.second_approved_at = datetime.utcnow()
+            leave.second_approved_at = datetime.now(timezone.utc)
             
         audit_action = "reject_leave"
     
@@ -125,7 +128,7 @@ def approve_leave(
              NotificationService.send_notification(db, leave.employee_id, "Leave Update", approval_status_msg, "info")
     except Exception as e:
         # Don't fail the request if notification fails
-        print(f"Notification failed: {e}")
+        logger.warning(f"Notification failed: {e}", exc_info=True)
     
     db.commit()
     db.refresh(leave)

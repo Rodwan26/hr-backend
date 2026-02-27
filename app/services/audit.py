@@ -55,7 +55,7 @@ class AuditService(BaseService):
             self.db.flush()
             return db_log
         except Exception as e:
-            print(f"FAILED TO AUDIT LOG: {e}")
+            self._logger.error(f"FAILED TO AUDIT LOG: {e}", exc_info=True)
             pass # Never break the main app flow because of a logging failure
 
     def log_operational_event(self, event_type: str, status: str, details: dict, organization_id: Optional[int] = None):

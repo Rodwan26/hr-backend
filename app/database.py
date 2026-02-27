@@ -1,6 +1,5 @@
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, declarative_base
 from app.core.config import settings
 
 # Support both PostgreSQL and SQLite via centralized settings
@@ -20,8 +19,8 @@ Base = declarative_base()
 
 def get_db():
     """
-    Dependency to provide a database session per request.
-    Ensures safe session closure after request fulfillment.
+    Session Provider: Provides a database session per request.
+    Transaction management is handled explicitly in the Service Layer.
     """
     db = SessionLocal()
     try:
@@ -36,8 +35,7 @@ def init_db():
     """
     # Import all models to ensure they are registered with Base.metadata before create_all
     from app.models import (
-        user, employee, job, resume, interview, 
-        user, employee, job, resume, interview, 
+        user, employee, job, resume, interview,
         interviewer_availability,
         leave_request, leave_balance, leave_policy, 
         payroll, salary_component, payroll_policy, 

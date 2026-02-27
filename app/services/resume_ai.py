@@ -2,16 +2,16 @@ import json
 import logging
 import re
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from app.services.ai_trust_service import AITrustService
 from app.models.user import UserRole
 
 
-from app.services.ai_orchestrator import AIOrchestrator, AIDomain
-from app.schemas.trust import TrustMetadata, ConfidenceLevel
 from app.models.resume import Resume
 from app.models.job import Job
+from app.core import prompts
+from app.services.notification import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -32,17 +32,10 @@ def anonymize_resume(text: str, blind_screening: bool = False) -> str:
         text = re.sub(r'(?i)\b(photo|headshot|picture)\b.*', '[PHOTO REDACTED]', text)
         
     # 3. LLM-based Contextual Scrubbing
-    instruction = (
-        "You are a PII scrubbing assistant. Remove personal identifiers (Names, Locations, IDs) from resume text. "
-        "Replace with [NAME], [LOCATION], [ID]. "
-    )
     if blind_screening:
-        instruction += (
-            "CRITICAL: rigorously remove any references to Age, Gender, Nationality, Ethnicity, and Photos. "
-            "Replace with [REDACTED]. Return ONLY the scrubbed text."
-        )
+        instruction = prompts.RESUME_ANONYMIZE_SYSTEM_BLIND
     else:
-        instruction += "Return ONLY the scrubbed text."
+        instruction = prompts.RESUME_ANONYMIZE_SYSTEM_NORMAL
 
     messages = [{"role": "system", "content": instruction}, {"role": "user", "content": text[:8000]}]
     
@@ -77,20 +70,7 @@ def analyze_resume(resume_text: str, job_details: Dict[str, Any]) -> Dict[str, A
     """
     logger.info("Analyzing resume with transparent scoring.")
     
-    system_prompt = """You are an expert HR Recruitment AI focused on transparent, fair, and evidence-based hiring.
-    Analyze the candidate's resume against the Job Description.
-    You must provide a detailed breakdown of the score in JSON:
-    {
-        "skills_match_score": 0-100,
-        "seniority_match_score": 0-100,
-        "domain_relevance_score": 0-100,
-        "overall_score": 0-100,
-        "feedback": "Concise summary of fit",
-        "rejection_reason": "If score < 70, provide a specific, constructive reason why the candidate is not a fit. Otherwise null.",
-        "missing_requirements": [{"requirement": "Req Name", "explanation": "Why it is missing"}],
-        "evidence": [{"signal": "Matched term", "source_text": "Quote", "relevance": "High/Med/Low"}]
-    }
-    """
+    system_prompt = prompts.RESUME_ANALYSIS_SYSTEM
     
     # Construct Context
     job_context = f"JOB TITLE: {job_details.get('title', 'Unknown')}\n"
@@ -101,7 +81,11 @@ def analyze_resume(resume_text: str, job_details: Dict[str, Any]) -> Dict[str, A
     if job_details.get('requirements'):
          job_context += f"REQS: {job_details['requirements']}\n"
          
-    user_content = f"JOB DETAILS:\n{job_context}\n\nRESUME TEXT:\n{resume_text[:10000]}"
+    user_content = prompts.get_prompt(
+        prompts.RESUME_ANALYSIS_USER_TEMPLATE,
+        job_context=job_context,
+        resume_text=resume_text[:10000]
+    )
     
     try:
         data = AIOrchestrator.analyze_text(
@@ -124,7 +108,7 @@ def analyze_resume(resume_text: str, job_details: Dict[str, Any]) -> Dict[str, A
         confidence_score=conf_score,
         confidence_level=ConfidenceLevel.HIGH if conf_score > 0.7 else ConfidenceLevel.MEDIUM if conf_score > 0.4 else ConfidenceLevel.LOW,
         ai_model="HR-Ensemble-v1",
-        timestamp=datetime.utcnow().isoformat(),
+        timestamp=datetime.now(timezone.utc).isoformat(),
         reasoning=f"Based on {len(evidence)} evidence points and {len(missing)} missing requirements."
     )
     
@@ -182,7 +166,11 @@ def process_resume_analysis(db: Session, payload: Dict[str, Any]):
     resume.status = "New" # Ready for review
     resume.anonymization_status = "VERIFIED" # Assumed if analysis ran on anonymized text
     
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     
     # Audit Log via AITrustService
     # We try to determine context from payload or default to System
@@ -209,6 +197,17 @@ def process_resume_analysis(db: Session, payload: Dict[str, Any]):
         )
     except Exception as e:
         logger.error(f"Failed to log trust event for resume {resume_id}: {e}")
+
+    # Trigger Notification for the user who submitted the resume
+    if user_id:
+        NotificationService.notify_user(
+            db,
+            user_id=user_id,
+            title="Analysis Complete",
+            message=f"AI analysis for '{resume.name}' is ready. Score: {resume.ai_score}/100.",
+            type="info",
+            link=f"/jobs/{job_id}"
+        )
 
     logger.info(f"Task Handler: Analysis completed for Resume {resume_id}")
     return result
