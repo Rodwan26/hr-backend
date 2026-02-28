@@ -1,7 +1,7 @@
 import os
 import logging
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import List, Optional
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -33,6 +33,21 @@ class Config(BaseModel):
     build_id: str = os.getenv("BUILD_ID", "local")
     commit_hash: str = os.getenv("COMMIT_HASH", "HEAD")
     request_id_header: str = "X-Request-ID"
+
+    # CORS — comma-separated origins loaded from env.
+    # Always includes localhost defaults; production URLs are appended via env var.
+    cors_origins: List[str] = Field(
+        default_factory=lambda: [
+            o.strip()
+            for o in os.getenv(
+                "CORS_ORIGINS",
+                "http://localhost:3000,http://localhost:3001,"
+                "http://127.0.0.1:3000,http://127.0.0.1:3001,"
+                "http://[::1]:3000,http://[::1]:3001",
+            ).split(",")
+            if o.strip()
+        ]
+    )
     
     # Scalability & Performance
     enable_caching: bool = os.getenv("ENABLE_CACHING", "true").lower() == "true"

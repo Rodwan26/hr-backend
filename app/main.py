@@ -167,29 +167,14 @@ app.add_middleware(LoggingMiddleware)
 app.add_middleware(CorrelationIdMiddleware)
 
 # 0. CORS (outermost - runs first on requests, last on responses)
-origins = [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:3001",
-    "http://[::1]:3000",
-    "http://[::1]:3001",
-]
-
-# In development, also allow the base localhost for mobile debugging or other tools
-if settings.environment == "development":
-    origins.extend(["http://localhost", "http://127.0.0.1"])
-
-# Add production frontend URLs
-if settings.environment != "development":
-    origins.extend([
-        "https://hr-ai-platform.vercel.app",
-        "https://hr-ai-simple.vercel.app",
-    ])
+# Allowed origins are fully driven by the CORS_ORIGINS environment variable.
+# Set it in your hosting provider (Render) as a comma-separated list, e.g.:
+#   CORS_ORIGINS=https://hr-frontend-nu.vercel.app,https://hr-ai-platform.vercel.app
+logger.info(f"CORS allowed origins: {settings.cors_origins}")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
