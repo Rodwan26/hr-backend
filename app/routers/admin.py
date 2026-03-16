@@ -8,6 +8,7 @@ from app.models.leave_request import LeaveRequest, LeaveStatus
 from app.models.ticket import Ticket
 from app.models.onboarding_employee import OnboardingEmployee
 from app.routers.auth_deps import require_role, get_current_org
+from app.services.database_service import reset_organization_data, reset_all_data
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
@@ -133,3 +134,59 @@ def get_audit_log_detail(
     if not log_entry:
         raise HTTPException(status_code=404, detail="Audit log entry not found")
     return log_entry
+
+
+# ============================================================================
+# Database Reset Endpoints
+# ============================================================================
+
+class ResetOrgResponse(BaseModel):
+    success: bool
+    message: str
+    deleted_counts: dict
+
+
+@router.delete("/reset/organization", response_model=ResetOrgResponse)
+def reset_organization(
+    db: Session = Depends(get_db),
+    org_id: int = Depends(get_current_org)
+):
+    """
+    Reset all data for the current organization.
+    Deletes all employees, departments, jobs, leave requests, etc.
+    Keeps the organization but removes all related data.
+    """
+    try:
+        deleted_counts = reset_organization_data(db, org_id)
+        return ResetOrgResponse(
+            success=True,
+            message=f"Organization {org_id} data reset successfully",
+            deleted_counts=deleted_counts
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/reset/all", response_model=ResetOrgResponse)
+def reset_all_organizations(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role([UserRole.HR_ADMIN]))
+):
+    """
+    WARNING: This endpoint deletes ALL organizations and data from the database.
+    Only accessible by HR_ADMIN.
+    Use with caution - this cannot be undone!
+    """
+    # Double-check security - only system-level admin or specific check
+    if current_user.role != UserRole.HR_ADMIN:
+        raise HTTPException(status_code=403, detail="Only HR_ADMIN can perform this action")
+    
+    try:
+        deleted_counts = reset_all_data(db)
+        return ResetOrgResponse(
+            success=True,
+            message="All organizations and data reset successfully",
+            deleted_counts=deleted_counts
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
