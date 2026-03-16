@@ -323,10 +323,14 @@ def system_status():
     try:
         with SessionLocal() as session:
             result = session.execute(text("SELECT 1")).fetchone()
-            db_version = session.execute(text("SELECT version()")).fetchone()[0]
+            try:
+                db_version = session.execute(text("SELECT version()")).fetchone()[0]
+                version_str = db_version[:50] + "..." if len(db_version) > 50 else db_version
+            except Exception:
+                version_str = "SQLite (local)"
         status["components"]["database"] = {
             "status": "connected",
-            "version": db_version[:50] + "..." if len(db_version) > 50 else db_version
+            "version": version_str
         }
     except Exception as e:
         status["components"]["database"] = {
