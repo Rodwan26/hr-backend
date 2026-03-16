@@ -1,4 +1,5 @@
 import logging
+import os
 from app.database import SessionLocal
 from app.models.user import User, UserRole
 from app.models.organization import Organization
@@ -8,16 +9,22 @@ logger = logging.getLogger(__name__)
 
 def init_system_data():
     """
-    Checks if the system needs initialization.
-    If no organization exists, creates a default one and an admin user.
+    System initialization on startup.
+    Creates default organization and admin user if not exists.
+    
+    Admin credentials are controlled by environment variables:
+    - DEFAULT_ADMIN_EMAIL (optional)
+    - DEFAULT_ADMIN_PASSWORD (optional)
+    
+    Only runs in production or when env vars are set.
     """
-    return # disable auto bootstrap during development
     db = SessionLocal()
     try:
         # Check if any organization exists
         org_count = db.query(Organization).count()
+        
         if org_count == 0:
-            logger.info("Running startup initialization...")
+            logger.info("Running system initialization...")
             
             # 1. Create Default Organization
             org = Organization(
@@ -26,24 +33,31 @@ def init_system_data():
                 is_active=True
             )
             db.add(org)
-            db.flush() # Get org ID
+            db.flush()
             
-            # 2. Create Default HR Admin
-            admin_email = "admin@alphacorp.com"
-            admin_pwd = "AdminPassword123!"
+            # 2. Create Admin User from Environment Variables
+            admin_email = os.getenv("DEFAULT_ADMIN_EMAIL")
+            admin_password = os.getenv("DEFAULT_ADMIN_PASSWORD")
             
-            existing_admin = db.query(User).filter(User.email == admin_email).first()
-            if not existing_admin:
-                hashed_pwd = auth_service.get_password_hash(admin_pwd)
-                admin_user = User(
-                    email=admin_email,
-                    hashed_password=hashed_pwd,
-                    role=UserRole.HR_ADMIN,
-                    organization_id=org.id,
-                    is_active=True
-                )
-                db.add(admin_user)
-                logger.info(f"✓ Created default Admin: {admin_email} (password set from code — change immediately)")
+            if admin_email and admin_password:
+                # Check if admin already exists
+                existing_admin = db.query(User).filter(User.email == admin_email).first()
+                if not existing_admin:
+                    hashed_pwd = auth_service.get_password_hash(admin_password)
+                    admin_user = User(
+                        email=admin_email,
+                        hashed_password=hashed_pwd,
+                        role=UserRole.HR_ADMIN,
+                        organization_id=org.id,
+                        is_active=True
+                    )
+                    db.add(admin_user)
+                    logger.info(f"✓ Created default Admin: {admin_email}")
+                else:
+                    logger.info(f"Admin user {admin_email} already exists")
+            else:
+                logger.warning("⚠ DEFAULT_ADMIN_EMAIL or DEFAULT_ADMIN_PASSWORD not set. No admin created.")
+                logger.warning("  Set these in your environment for production deployment.")
             
             db.commit()
             logger.info("✓ System bootstrapped successfully with Alpha Corp.")
