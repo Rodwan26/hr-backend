@@ -23,3 +23,17 @@ def test_root_endpoint(client):
     response = client.get("/")
     assert response.status_code == 200
     assert "HR AI Platform API" in response.json()["message"]
+
+
+def test_system_status(client):
+    """Test the /system/status endpoint returns comprehensive system info."""
+    response = client.get("/system/status")
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["status"] in ["healthy", "degraded"]
+    assert "version" in data
+    assert "environment" in data
+    assert "components" in data
+    assert "database" in data["components"]
+    assert "ai_service" in data["components"]
+    assert "security" in data["components"]

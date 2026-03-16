@@ -299,3 +299,66 @@ def liveness_check():
 def get_metrics():
     """Prometheus-compatible metrics endpoint."""
     return get_metrics_response()
+
+
+@app.get("/system/status", tags=["Health"])
+def system_status():
+    """
+    Comprehensive system health status.
+    Used by DevOps for system monitoring and troubleshooting.
+    """
+    from sqlalchemy import text
+    
+    status = {
+        "status": "healthy",
+        "version": settings.version,
+        "build_id": settings.build_id,
+        "commit_hash": settings.commit_hash,
+        "environment": settings.environment,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "components": {}
+    }
+    
+    # Database status
+    try:
+        with SessionLocal() as session:
+            result = session.execute(text("SELECT 1")).fetchone()
+            db_version = session.execute(text("SELECT version()")).fetchone()[0]
+        status["components"]["database"] = {
+            "status": "connected",
+            "version": db_version[:50] + "..." if len(db_version) > 50 else db_version
+        }
+    except Exception as e:
+        status["components"]["database"] = {
+            "status": "disconnected",
+            "error": str(e)
+        }
+        status["status"] = "degraded"
+    
+    # AI Service status
+    try:
+        ai_key = settings.ai.openrouter_api_key
+        if ai_key:
+            status["components"]["ai_service"] = {
+                "status": "configured",
+                "model": settings.ai.model_name,
+                "kill_switch": settings.ai.kill_switch
+            }
+        else:
+            status["components"]["ai_service"] = {
+                "status": "not_configured"
+            }
+    except Exception as e:
+        status["components"]["ai_service"] = {
+            "status": "error",
+            "error": str(e)
+        }
+    
+    # Security status
+    status["components"]["security"] = {
+        "rate_limiting": "enabled",
+        "csrf_protection": "enabled" if settings.environment != "development" else "disabled_dev",
+        "cors_origins_count": len(settings.cors_origins)
+    }
+    
+    return status
