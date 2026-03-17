@@ -19,37 +19,58 @@ class InitializeRequest(BaseModel):
     admin_email: EmailStr
     password: str
 
-@router.get("/status")
+class SetupStatusResponse(BaseModel):
+    organizations_count: int
+    can_create_new: bool = True
+
+@router.get("/status", response_model=SetupStatusResponse)
 def get_setup_status(db: Session = Depends(get_db)):
-    """Check if the system is already initialized."""
-    initialized = db.query(Organization).first() is not None
-    return {"initialized": initialized}
+    """
+    Get system setup status.
+    Returns the number of organizations and whether new organizations can be created.
+    This endpoint is always accessible - it does NOT restrict creating new organizations.
+    """
+    org_count = db.query(Organization).count()
+    return SetupStatusResponse(
+        organizations_count=org_count,
+        can_create_new=True
+    )
 
 @router.post("/initialize", status_code=status.HTTP_201_CREATED)
 def initialize_system(data: InitializeRequest, db: Session = Depends(get_db)):
     """
-    Bootstrap the system: Create Org, Admin User, and matched Employee Profile.
-    Only runs if no organization exists.
+    Create a new organization with admin user.
+    This is a MULTI-TENANT system - you can create multiple organizations.
+    Each organization has its own independent data.
     """
-    # 1. Check if already initialized
-    if db.query(Organization).first():
+    # Check if email already exists in ANY organization
+    existing_user = db.query(User).filter(User.email == data.admin_email).first()
+    if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="System already initialized. Initialization can only be performed once."
+            detail="An account with this email already exists. Please use a different email or login."
+        )
+    
+    # Check if organization name/slug already exists
+    slug = data.organization_name.lower().replace(" ", "-")
+    existing_org = db.query(Organization).filter(Organization.slug == slug).first()
+    if existing_org:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="An organization with this name already exists. Please choose a different name."
         )
 
     try:
-        # 2. Create Organization
-        slug = data.organization_name.lower().replace(" ", "-")
+        # 1. Create Organization
         org = Organization(
             name=data.organization_name,
             slug=slug,
             is_active=True
         )
         db.add(org)
-        db.flush() # Get org.id
+        db.flush()
 
-        # 3. Create Admin User
+        # 2. Create Admin User
         hashed_password = auth_service.get_password_hash(data.password)
         user = User(
             email=data.admin_email,
@@ -60,9 +81,9 @@ def initialize_system(data: InitializeRequest, db: Session = Depends(get_db)):
             is_active=True
         )
         db.add(user)
-        db.flush() # Get user.id
+        db.flush()
 
-        # 4. Create Employee Profile (CRITICAL: Fixes User vs Employee gap)
+        # 3. Create Employee Profile
         name_parts = data.admin_name.split(" ", 1)
         first_name = name_parts[0]
         last_name = name_parts[1] if len(name_parts) > 1 else ""
@@ -76,9 +97,9 @@ def initialize_system(data: InitializeRequest, db: Session = Depends(get_db)):
             organization_id=org.id
         )
         db.add(employee)
-        db.flush() # Get employee.id
+        db.flush()
 
-        # 5. Create Default Leave Balance
+        # 4. Create Default Leave Balance
         leave_balance = LeaveBalance(
             employee_id=user.id, 
             leave_type="Annual",
@@ -90,22 +111,23 @@ def initialize_system(data: InitializeRequest, db: Session = Depends(get_db)):
         db.add(leave_balance)
 
         db.commit()
-        logger.info(f"System bootstrap complete for {data.organization_name} (Admin: {data.admin_email})")
+        logger.info(f"Organization '{data.organization_name}' created with admin: {data.admin_email}")
         
         return {
             "success": True,
-            "message": "System initialized successfully",
+            "message": f"Organization '{data.organization_name}' created successfully. You can now login.",
             "organization_id": org.id,
+            "organization_name": org.name,
             "admin_user_id": user.id,
             "employee_id": employee.id
         }
 
     except Exception as e:
         db.rollback()
-        logger.error(f"System initialization failed: {str(e)}", exc_info=True)
+        logger.error(f"Organization creation failed: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Initialization failed: {str(e)}"
+            detail=f"Failed to create organization: {str(e)}"
         )
 
 
