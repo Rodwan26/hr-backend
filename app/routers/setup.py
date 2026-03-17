@@ -6,6 +6,7 @@ from app.models.user import User, UserRole, UserSession
 from app.models.employee import Employee
 from app.models.leave_balance import LeaveBalance
 from app.services import auth as auth_service
+from app.services.database_service import reset_all_data
 from pydantic import BaseModel, EmailStr
 import logging
 
@@ -105,4 +106,26 @@ def initialize_system(data: InitializeRequest, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Initialization failed: {str(e)}"
+        )
+
+
+@router.delete("/reset", status_code=status.HTTP_200_OK)
+def reset_system(db: Session = Depends(get_db)):
+    """
+    WARNING: This endpoint resets the ENTIRE database.
+    Use only for development/testing purposes.
+    This will delete ALL organizations and data!
+    """
+    try:
+        deleted_counts = reset_all_data(db)
+        return {
+            "success": True,
+            "message": "System reset successfully. All data has been deleted.",
+            "deleted": deleted_counts
+        }
+    except Exception as e:
+        logger.error(f"System reset failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Reset failed: {str(e)}"
         )
