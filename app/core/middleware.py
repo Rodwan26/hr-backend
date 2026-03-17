@@ -161,6 +161,9 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         "/api/auth/register",
         "/api/auth/refresh",
         "/api/auth/logout",
+        "/api/setup/status",
+        "/api/setup/initialize",
+        "/api/setup/reset",
         "/health",
         "/readiness",
         "/liveness",
@@ -168,6 +171,8 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         "/docs",
         "/redoc",
         "/openapi.json",
+        "/login",
+        "/api/health",
     }
     
     async def dispatch(self, request: Request, call_next):
