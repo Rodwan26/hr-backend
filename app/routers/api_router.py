@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from app.routers import (
     helpdesk, resume, wellbeing, interview, documents, 
     onboarding, leave, leave_manager, payroll, burnout, auth, admin, jobs,
-    departments, setup, notifications, risk
+    departments, setup, notifications, risk, system_admin
 )
 
 # Centralized API router hub
@@ -27,3 +27,4 @@ api_router.include_router(risk.router, tags=["Organizational Risk"])
 api_router.include_router(jobs.router, tags=["Jobs"])
 api_router.include_router(departments.router, tags=["Departments"])
 api_router.include_router(setup.router, prefix="/setup", tags=["System Setup"])
+api_router.include_router(system_admin.router, tags=["System Administration"])
