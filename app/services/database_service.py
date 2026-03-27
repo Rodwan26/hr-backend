@@ -20,7 +20,7 @@ def reset_organization_data(db, organization_id: int):
     from app.models.notification import Notification
     from app.models.leave_request import LeaveRequest
     from app.models.leave_balance import LeaveBalance
-    from app.models.interview import Interview, InterviewScore
+    from app.models.interview import Interview, InterviewScorecard, InterviewKit
     from app.models.governance import EthicalAuditLog
     from app.models.department import Department
     
@@ -65,44 +65,55 @@ def reset_organization_data(db, organization_id: int):
         ).delete(synchronize_session=False)
         deleted_counts["leave_requests"] = count
         
-        # Step 7: Delete interview scores (references interviews, then users)
-        count = db.query(InterviewScore).filter(
-            InterviewScore.interviewer_id.in_(org_user_id_list)
+        # Step 7: Delete interview scorecards (references users as interviewer)
+        count = db.query(InterviewScorecard).filter(
+            InterviewScorecard.interviewer_id.in_(org_user_id_list)
         ).delete(synchronize_session=False)
-        deleted_counts["interview_scores"] = count
+        deleted_counts["interview_scorecards"] = count
         
-        # Step 8: Delete interviews (references users as candidate/interviewer)
+        # Step 8: Delete interview kits (references interviews)
+        count = db.query(InterviewKit).filter(
+            InterviewKit.interview_id.in_(
+                db.query(Interview.id).filter(
+                    (Interview.candidate_id.in_(org_user_id_list)) |
+                    (Interview.interviewer_id.in_(org_user_id_list))
+                )
+            )
+        ).delete(synchronize_session=False)
+        deleted_counts["interview_kits"] = count
+        
+        # Step 9: Delete interviews (references users as candidate/interviewer)
         count = db.query(Interview).filter(
             (Interview.candidate_id.in_(org_user_id_list)) |
             (Interview.interviewer_id.in_(org_user_id_list))
         ).delete(synchronize_session=False)
         deleted_counts["interviews"] = count
         
-        # Step 9: Delete ethical audit logs (references users as reviewer)
+        # Step 10: Delete ethical audit logs (references users as reviewer)
         count = db.query(EthicalAuditLog).filter(
             EthicalAuditLog.reviewer_id.in_(org_user_id_list)
         ).delete(synchronize_session=False)
         deleted_counts["ethical_audit_logs"] = count
         
-        # Step 10: Delete audit logs (references users)
+        # Step 11: Delete audit logs (references users)
         count = db.query(AuditLog).filter(
             AuditLog.user_id.in_(org_user_id_list)
         ).delete(synchronize_session=False)
         deleted_counts["audit_logs"] = count
         
-        # Step 11: Delete departments (references users as manager)
+        # Step 12: Delete departments (references users as manager)
         count = db.query(Department).filter(
             Department.organization_id == organization_id
         ).delete(synchronize_session=False)
         deleted_counts["departments"] = count
         
-        # Step 12: Delete employees (references users)
+        # Step 13: Delete employees (references users)
         count = db.query(Employee).filter(
             Employee.organization_id == organization_id
         ).delete(synchronize_session=False)
         deleted_counts["employees"] = count
         
-        # Step 13: Delete users (excluding SUPER_ADMIN)
+        # Step 14: Delete users (excluding SUPER_ADMIN)
         count = db.query(User).filter(
             User.organization_id == organization_id,
             User.role != UserRole.SUPER_ADMIN
