@@ -219,14 +219,17 @@ async def app_exception_handler(request: Request, exc: AppException):
 @app.exception_handler(StarletteHTTPException)
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: Union[HTTPException, StarletteHTTPException]):
-    """Handle standard HTTP exceptions."""
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
+    """Handle standard HTTP exceptions with support for structured error responses."""
+    # Handle structured error responses (dict) - e.g., for smart validation
+    if isinstance(exc.detail, dict):
+        response_content = {"success": False, **exc.detail}
+    else:
+        response_content = {
             "success": False,
-            "errors": [{"msg": exc.detail if isinstance(exc.detail, str) else "Request failed"}]
+            "errors": [{"msg": exc.detail}]
         }
-    )
+    
+    return JSONResponse(status_code=exc.status_code, content=response_content)
 
 
 @app.exception_handler(Exception)
