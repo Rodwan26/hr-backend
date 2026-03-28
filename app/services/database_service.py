@@ -321,29 +321,27 @@ def reset_organization_data(db, organization_id: int):
         deleted_counts["onboarding_employees"] = count
         
         # LEVEL 31: Delete remaining org-scoped data
-        from app.models.leave_policy import LeavePolicy
-        from app.models.payroll_policy import PayrollPolicy
+        # Note: LeavePolicy, PayrollPolicy, EmbeddingCache are GLOBAL (no org_id)
         from app.models.ticket import Ticket
         from app.models.task import Task
         from app.models.policy import Policy
         from app.models.onboarding_template import OnboardingTemplate
-        from app.models.embedding_cache import EmbeddingCache
         
-        remaining_models = [
-            (LeavePolicy, "leave_policies"),
-            (PayrollPolicy, "payroll_policies"),
+        org_scoped_models = [
             (Ticket, "tickets"),
             (Task, "tasks"),
             (Policy, "policies"),
             (OnboardingTemplate, "onboarding_templates"),
-            (EmbeddingCache, "embedding_cache"),
         ]
         
-        for model, name in remaining_models:
-            count = db.query(model).filter(
-                model.organization_id == organization_id
-            ).delete(synchronize_session=False)
-            deleted_counts[name] = count
+        for model, name in org_scoped_models:
+            if hasattr(model, 'organization_id'):
+                count = db.query(model).filter(
+                    model.organization_id == organization_id
+                ).delete(synchronize_session=False)
+                deleted_counts[name] = count
+            else:
+                deleted_counts[name] = 0  # Skip if no org_id
         
         # LEVEL 32: Finally delete the organization
         count = db.query(Organization).filter(
