@@ -154,6 +154,10 @@ def delete_organization(
     WARNING: This will permanently delete all data for this organization.
     Only accessible by SUPER_ADMIN.
     """
+    import logging
+    import traceback
+    logger = logging.getLogger(__name__)
+    
     # Check if organization exists
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
@@ -174,9 +178,20 @@ def delete_organization(
             deleted_id=org_id
         )
     except Exception as e:
+        error_type = type(e).__name__
+        error_msg = str(e)
+        tb = traceback.format_exc()
+        
+        logger.error(f"=== DELETE ORG ERROR ===")
+        logger.error(f"Org ID: {org_id}")
+        logger.error(f"Error Type: {error_type}")
+        logger.error(f"Error Message: {error_msg}")
+        logger.error(f"Traceback:\n{tb}")
+        logger.error(f"========================")
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete organization: {str(e)}"
+            detail=f"Failed to delete organization: {error_type}: {error_msg}"
         )
 
 
