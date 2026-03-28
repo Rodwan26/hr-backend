@@ -48,23 +48,43 @@ def initialize_system(data: InitializeRequest, db: Session = Depends(get_db)):
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="An account with this email already exists. Please use a different email or login."
+            detail={
+                "type": "EMAIL_EXISTS",
+                "field": "admin_email",
+                "message": "This email is already registered. Would you like to login instead?",
+                "action": {"type": "LOGIN", "url": "/login"}
+            }
         )
     
     # Check if organization name/slug already exists
-    slug = data.organization_name.lower().replace(" ", "-")
-    existing_org = db.query(Organization).filter(Organization.slug == slug).first()
+    base_slug = data.organization_name.lower().replace(" ", "-")
+    
+    # Generate slug suggestions if the base slug is taken
+    suggestions = []
+    existing_org = db.query(Organization).filter(Organization.slug == base_slug).first()
     if existing_org:
+        # Generate alternative slugs
+        suggestions = [
+            f"{base_slug}-1",
+            f"{base_slug}-company",
+            f"{base_slug}-corp",
+            f"{base_slug}-org",
+        ]
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="An organization with this name already exists. Please choose a different name."
+            detail={
+                "type": "SLUG_EXISTS",
+                "field": "organization_slug",
+                "message": "This organization URL is already taken.",
+                "suggestions": suggestions
+            }
         )
 
     try:
         # 1. Create Organization
         org = Organization(
             name=data.organization_name,
-            slug=slug,
+            slug=base_slug,
             is_active=True
         )
         db.add(org)
