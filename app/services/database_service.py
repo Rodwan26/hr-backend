@@ -24,7 +24,7 @@ def reset_organization_data(db, organization_id: int):
     from app.models.document_chunk import DocumentChunk
     from app.models.job import Job
     from app.models.resume import Resume
-    from app.models.interview import Interview, InterviewQuestion, InterviewScorecard, InterviewKit
+    from app.models.interview import Interview, InterviewSlot, InterviewScorecard, InterviewKit
     from app.models.governance import EthicalAuditLog
     from app.models.activity import Activity
     from app.models.performance_review import PerformanceReview
@@ -134,19 +134,19 @@ def reset_organization_data(db, organization_id: int):
             ).delete(synchronize_session=False)
             deleted_counts["leave_balances"] = count
         
-        # LEVEL 5: Interview scorecards (points to users as interviewer_id)
+        # LEVEL 5: Interview slots (points to users as interviewer_id, interviews)
+        if org_user_id_list:
+            count = db.query(InterviewSlot).filter(
+                InterviewSlot.interviewer_id.in_(org_user_id_list)
+            ).delete(synchronize_session=False)
+            deleted_counts["interview_slots"] = count
+        
+        # LEVEL 6: Interview scorecards (points to users as interviewer_id)
         if org_user_id_list:
             count = db.query(InterviewScorecard).filter(
                 InterviewScorecard.interviewer_id.in_(org_user_id_list)
             ).delete(synchronize_session=False)
             deleted_counts["interview_scorecards"] = count
-        
-        # LEVEL 6: Interview questions (points to interviews)
-        if org_interview_ids:
-            count = db.query(InterviewQuestion).filter(
-                InterviewQuestion.interview_id.in_(org_interview_ids)
-            ).delete(synchronize_session=False)
-            deleted_counts["interview_questions"] = count
         
         # LEVEL 7: Interview kits (points to interviews)
         if org_interview_ids:
@@ -377,7 +377,7 @@ def reset_all_data(db):
     from app.models.document_chunk import DocumentChunk
     from app.models.job import Job
     from app.models.resume import Resume
-    from app.models.interview import Interview, InterviewQuestion, InterviewScorecard, InterviewKit
+    from app.models.interview import Interview, InterviewSlot, InterviewScorecard, InterviewKit
     from app.models.governance import EthicalAuditLog
     from app.models.activity import Activity
     from app.models.performance_review import PerformanceReview
@@ -417,11 +417,11 @@ def reset_all_data(db):
         # Level 4: Leave balances
         deleted_counts["leave_balances"] = db.query(LeaveBalance).delete(synchronize_session=False)
         
-        # Level 5: Interview scorecards
-        deleted_counts["interview_scorecards"] = db.query(InterviewScorecard).delete(synchronize_session=False)
+        # Level 5: Interview slots
+        deleted_counts["interview_slots"] = db.query(InterviewSlot).delete(synchronize_session=False)
         
-        # Level 6: Interview questions
-        deleted_counts["interview_questions"] = db.query(InterviewQuestion).delete(synchronize_session=False)
+        # Level 6: Interview scorecards
+        deleted_counts["interview_scorecards"] = db.query(InterviewScorecard).delete(synchronize_session=False)
         
         # Level 7: Interview kits
         deleted_counts["interview_kits"] = db.query(InterviewKit).delete(synchronize_session=False)
